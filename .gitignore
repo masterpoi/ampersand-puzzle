@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+
+# STL binaries — large, generated; not tracked in git.
+# Run generate_stls.ps1 or the orchestrator to rebuild them.
+stl/
+# Exception: track the plans/ directory (audit trail of every change)
+!plans/
+
+# Editor / OS
+.vscode/
+*.DS_Store
+Thumbs.db
+
+# Logs
+*.log

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "puzzle-preview",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "3456", "--directory", "D:\\2026\\dev\\o&o"],
+      "port": 3456
+    }
+  ]
+}

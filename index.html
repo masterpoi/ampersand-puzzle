@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ampersand Shatter Puzzle — Preview</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #1a1a2e; color: #e0e0e0; font-family: 'Segoe UI', sans-serif; height: 100vh; display: flex; flex-direction: column; }
+
+  header { padding: 12px 20px; background: #16213e; border-bottom: 1px solid #0f3460; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  header h1 { font-size: 1.1rem; font-weight: 600; color: #e94560; white-space: nowrap; }
+
+  .controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .controls label { font-size: 0.8rem; color: #aaa; }
+  select, button { background: #0f3460; color: #e0e0e0; border: 1px solid #e94560; border-radius: 4px; padding: 5px 10px; font-size: 0.8rem; cursor: pointer; }
+  select:hover, button:hover { background: #e94560; }
+  button.active { background: #e94560; }
+
+  .piece-grid { display: flex; gap: 6px; flex-wrap: wrap; padding: 6px 20px; background: #16213e; border-bottom: 1px solid #0f3460; }
+  .piece-btn { width: 32px; height: 32px; border-radius: 4px; border: 2px solid transparent; background: #0f3460; color: #aaa; font-size: 0.75rem; cursor: pointer; transition: all 0.15s; }
+  .piece-btn:hover { border-color: #e94560; color: #fff; }
+  .piece-btn.loaded  { background: #1a5276; color: #7fb3d3; }
+  .piece-btn.visible { border-color: #e94560; color: #fff; background: #2e4057; }
+  .piece-btn.error   { background: #4a1010; color: #e07070; border-color: #a00; }
+
+  #canvas-wrap { flex: 1; position: relative; }
+  #canvas-wrap canvas { display: block; width: 100%; height: 100%; }
+
+  #status { position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.6); padding: 4px 12px; border-radius: 12px;
+            font-size: 0.75rem; color: #aaa; pointer-events: none; }
+
+  #info-panel { position: absolute; top: 8px; right: 12px; background: rgba(22,33,62,0.9);
+                border: 1px solid #0f3460; border-radius: 6px; padding: 10px 14px;
+                font-size: 0.75rem; min-width: 160px; line-height: 1.7; }
+  #info-panel b { color: #e94560; }
+
+  .spinner { display: inline-block; width: 10px; height: 10px; border: 2px solid #aaa;
+             border-top-color: #e94560; border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>&#38; Ampersand Shatter Puzzle</h1>
+  <div class="controls">
+    <label>View</label>
+    <button id="btn-all"      class="active" onclick="showAll()">All Pieces</button>
+    <button id="btn-exploded" onclick="showExploded()">Exploded</button>
+    <button id="btn-single"   onclick="showSingle()">Single</button>
+  </div>
+  <div class="controls">
+    <label>Colour</label>
+    <select id="color-mode" onchange="applyColorMode()">
+      <option value="piece">By Piece</option>
+      <option value="material">Material (PLA beige)</option>
+      <option value="grey">Neutral grey</option>
+    </select>
+  </div>
+  <div class="controls">
+    <label>BG</label>
+    <select id="bg-select" onchange="changeBg(this.value)">
+      <option value="#1a1a2e">Dark navy</option>
+      <option value="#111">Black</option>
+      <option value="#f0f0f0">Light</option>
+    </select>
+  </div>
+</header>
+
+<div class="piece-grid" id="piece-grid"></div>
+
+<div id="canvas-wrap">
+  <canvas id="c"></canvas>
+  <div id="status">Loading Three.js…</div>
+  <div id="info-panel">
+    <b>Puzzle Info</b><br>
+    Pieces: 12<br>
+    Screws: 16 × M3×12<br>
+    Size: 200 × 200 mm<br>
+    Thickness: 12 mm<br>
+    <hr style="border-color:#0f3460;margin:6px 0">
+    <span id="hover-info">Hover a piece</span>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { STLLoader }     from 'three/addons/loaders/STLLoader.js';
+
+// ── Piece colours (12 distinct hues) ──────────────────────────────────────
+const PIECE_COLORS = [
+  0xe74c3c, 0xe67e22, 0xf1c40f, 0x2ecc71,
+  0x1abc9c, 0x3498db, 0x9b59b6, 0xe91e63,
+  0x00bcd4, 0x8bc34a, 0xff5722, 0x607d8b,
+];
+
+// Explode offsets matching SCAD (scale × 25 mm)
+const EXPLODE_VEC = [
+  [-20,-12], [-5,-22], [8,-22], [22,-20],
+  [-22,8],   [-6,0],   [8,-2],  [22,0],
+  [-22,20],  [-5,22],  [8,22],  [22,20],
+];
+
+const NUM_PIECES = 12;
+const STL_BASE   = 'stl/piece_';
+
+// ── Scene setup ────────────────────────────────────────────────────────────
+const canvas   = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
+
+const scene  = new THREE.Scene();
+scene.background = new THREE.Color(0x1a1a2e);
+
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 2000);
+camera.position.set(100, -220, 280);
+camera.up.set(0, 0, 1);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(100, 100, 6);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+controls.update();
+
+// Lights
+const ambient = new THREE.AmbientLight(0xffffff, 0.55);
+scene.add(ambient);
+const sun = new THREE.DirectionalLight(0xffffff, 1.1);
+sun.position.set(200, -100, 300);
+sun.castShadow = true;
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0x8899cc, 0.35);
+fill.position.set(-150, 200, 100);
+scene.add(fill);
+
+// Shadow plane
+const plane = new THREE.Mesh(
+  new THREE.PlaneGeometry(600, 600),
+  new THREE.ShadowMaterial({ opacity: 0.25 })
+);
+plane.receiveShadow = true;
+plane.position.set(100, 100, -0.5);
+scene.add(plane);
+
+// ── State ──────────────────────────────────────────────────────────────────
+const meshes      = new Array(NUM_PIECES).fill(null);
+const loadState   = new Array(NUM_PIECES).fill('pending'); // pending|loading|ok|error
+let   viewMode    = 'all';   // all | exploded | single
+let   singleIdx   = 0;
+let   colorMode   = 'piece';
+const explodeFactor = { val: 0 };
+
+function setStatus(msg) { document.getElementById('status').innerHTML = msg; }
+
+// ── Piece buttons ──────────────────────────────────────────────────────────
+const grid = document.getElementById('piece-grid');
+const btns = [];
+for (let i = 0; i < NUM_PIECES; i++) {
+  const b = document.createElement('button');
+  b.className = 'piece-btn';
+  b.textContent = `P${i}`;
+  b.title = `Piece ${i}`;
+  b.onclick = () => { singleIdx = i; if (viewMode === 'single') applySingle(); };
+  grid.appendChild(b);
+  btns.push(b);
+}
+
+function updateBtns() {
+  for (let i = 0; i < NUM_PIECES; i++) {
+    const b = btns[i];
+    b.className = 'piece-btn';
+    if (loadState[i] === 'ok')    b.classList.add('loaded');
+    if (loadState[i] === 'error') b.classList.add('error');
+    const m = meshes[i];
+    if (m && m.visible) b.classList.add('visible');
+  }
+}
+
+// ── STL loading ────────────────────────────────────────────────────────────
+const loader = new STLLoader();
+let loadedCount = 0;
+
+function loadPiece(i) {
+  if (loadState[i] !== 'pending') return;
+  loadState[i] = 'loading';
+  setStatus(`<span class="spinner"></span> Loading piece ${i}…`);
+
+  loader.load(
+    `${STL_BASE}${i}.stl`,
+    (geo) => {
+      geo.computeVertexNormals();
+      const mat  = makeMaterial(i);
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.castShadow    = true;
+      mesh.receiveShadow = true;
+      mesh.userData.idx  = i;
+      scene.add(mesh);
+      meshes[i]    = mesh;
+      loadState[i] = 'ok';
+      loadedCount++;
+      applyView();
+      updateBtns();
+      setStatus(`Loaded ${loadedCount} / ${NUM_PIECES}`);
+      if (loadedCount === NUM_PIECES) setStatus('All pieces loaded — drag to orbit');
+    },
+    undefined,
+    () => {
+      loadState[i] = 'error';
+      updateBtns();
+      console.warn(`piece_${i}.stl not found — run generate_stls.ps1 first`);
+      if (loadedCount + countErrors() === NUM_PIECES)
+        setStatus(`${loadedCount} loaded, ${countErrors()} missing (run generate_stls.ps1)`);
+    }
+  );
+}
+
+function countErrors() { return loadState.filter(s => s === 'error').length; }
+
+// ── Materials ──────────────────────────────────────────────────────────────
+function makeMaterial(i) {
+  return new THREE.MeshPhongMaterial({
+    color:     pieceColor(i),
+    specular:  0x222222,
+    shininess: 40,
+  });
+}
+
+function pieceColor(i) {
+  if (colorMode === 'piece')    return PIECE_COLORS[i % PIECE_COLORS.length];
+  if (colorMode === 'material') return 0xf5e6c8;
+  return 0x888888;
+}
+
+window.applyColorMode = () => {
+  colorMode = document.getElementById('color-mode').value;
+  for (let i = 0; i < NUM_PIECES; i++)
+    if (meshes[i]) meshes[i].material.color.set(pieceColor(i));
+};
+
+// ── View modes ─────────────────────────────────────────────────────────────
+window.showAll      = () => { viewMode = 'all';      applyView(); syncBtns('btn-all'); };
+window.showExploded = () => { viewMode = 'exploded'; applyView(); syncBtns('btn-exploded'); };
+window.showSingle   = () => { viewMode = 'single';   applyView(); syncBtns('btn-single'); };
+
+function syncBtns(activeId) {
+  ['btn-all','btn-exploded','btn-single'].forEach(id => {
+    document.getElementById(id).classList.toggle('active', id === activeId);
+  });
+}
+
+function applyView() {
+  if (viewMode === 'all')      applyAll();
+  else if (viewMode === 'exploded') applyExploded();
+  else applySingle();
+  updateBtns();
+}
+
+function applyAll() {
+  for (let i = 0; i < NUM_PIECES; i++) {
+    const m = meshes[i];
+    if (!m) continue;
+    m.visible = true;
+    m.position.set(0, 0, 0);
+  }
+}
+
+function applyExploded() {
+  const spread = 30; // mm extra per unit
+  for (let i = 0; i < NUM_PIECES; i++) {
+    const m = meshes[i];
+    if (!m) continue;
+    m.visible = true;
+    m.position.set(
+      EXPLODE_VEC[i][0] * spread / 20,
+      EXPLODE_VEC[i][1] * spread / 20,
+      0
+    );
+  }
+}
+
+function applySingle() {
+  for (let i = 0; i < NUM_PIECES; i++) {
+    const m = meshes[i];
+    if (!m) continue;
+    m.visible  = (i === singleIdx);
+    m.position.set(0, 0, 0);
+  }
+}
+
+// ── Raycasting hover ───────────────────────────────────────────────────────
+const raycaster = new THREE.Raycaster();
+const mouse     = new THREE.Vector2(-9, -9);
+let   hovered   = -1;
+
+renderer.domElement.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  mouse.x =  ((e.clientX - rect.left) / rect.width)  * 2 - 1;
+  mouse.y = -((e.clientY - rect.top)  / rect.height) * 2 + 1;
+});
+
+renderer.domElement.addEventListener('click', () => {
+  if (hovered >= 0) { singleIdx = hovered; if (viewMode === 'single') applySingle(); }
+});
+
+// ── Resize ─────────────────────────────────────────────────────────────────
+function resize() {
+  const w = canvas.parentElement.clientWidth;
+  const h = canvas.parentElement.clientHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── Background change ──────────────────────────────────────────────────────
+window.changeBg = (hex) => {
+  scene.background = new THREE.Color(hex);
+  document.body.style.background = hex;
+};
+
+// ── Render loop ────────────────────────────────────────────────────────────
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+
+  // Hover detection
+  raycaster.setFromCamera(mouse, camera);
+  const visible = meshes.filter(Boolean).filter(m => m.visible);
+  const hits    = raycaster.intersectObjects(visible);
+  const newHov  = hits.length ? hits[0].object.userData.idx : -1;
+
+  if (newHov !== hovered) {
+    if (hovered >= 0 && meshes[hovered]) meshes[hovered].material.emissive.set(0x000000);
+    if (newHov >= 0  && meshes[newHov])  meshes[newHov].material.emissive.set(0x333300);
+    hovered = newHov;
+    document.getElementById('hover-info').textContent =
+      hovered >= 0 ? `Piece P${hovered}` : 'Hover a piece';
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+
+// ── Load all pieces ────────────────────────────────────────────────────────
+setStatus(`Loading STL files… (run generate_stls.ps1 if missing)`);
+for (let i = 0; i < NUM_PIECES; i++) loadPiece(i);
+
+</script>
+</body>
+</html>
