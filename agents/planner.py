@@ -178,9 +178,11 @@ Rules for `upload_paths`: every rebuilt stl/piece_N.stl; add index.html if HTML 
     MAX_NUDGES = 4   # allow several attempts before giving up
 
     for _turn in range(MAX_NUDGES + 1):
-        response = client.messages.create(
+        # stream=True required by SDK when max_tokens is high enough to risk
+        # exceeding the 10-minute non-streaming timeout.
+        with client.messages.stream(
             model=CLAUDE_MODEL,
-            max_tokens=32000,   # adaptive thinking consumes tokens before tool call
+            max_tokens=32000,
             thinking={"type": "adaptive"},
             system=[
                 {
@@ -191,7 +193,8 @@ Rules for `upload_paths`: every rebuilt stl/piece_N.stl; add index.html if HTML 
             ],
             tools=tools,
             messages=messages,
-        )
+        ) as stream:
+            response = stream.get_final_message()
 
         if verbose:
             u = response.usage
