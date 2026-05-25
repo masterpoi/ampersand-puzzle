@@ -4,6 +4,15 @@ __pycache__/
 *.pyo
 *.pyd
 .env
+*.env
+.env.*
+
+# Credentials — never commit these
+.aws/
+*.pem
+*.key
+*_credentials*
+*_secrets*
 
 # STL binaries — large, generated; not tracked in git.
 # Run generate_stls.ps1 or the orchestrator to rebuild them.
