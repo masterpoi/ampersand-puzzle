@@ -1,0 +1,61 @@
+{
+  "summary": "Switch hardware from M3 to M5: update screw clearance, countersink, and heat-set insert diameters, refresh comments, and update HTML info panel.",
+  "scad_changes": [
+    {
+      "description": "Update file header screw count/size",
+      "search": "//  OpenSCAD  |  12 pieces  |  no backing plate  |  16 \u00d7 M3 \u00d7 12 mm",
+      "replace": "//  OpenSCAD  |  12 pieces  |  no backing plate  |  16 \u00d7 M5 \u00d7 12 mm"
+    },
+    {
+      "description": "Update SCREW FIT comment block for M5 (head height ~3 mm \u2192 CS down to z=9.0)",
+      "search": "//  SCREW FIT (M3 \u00d7 12 mm, DIN 7991)\n//  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n//  PIECE_H = 12 mm = screw length \u2192 shaft tip reaches z = 0 exactly.\n//    Head (flush at z=12)  \u2192  CS cone down to z=9.5  \u2192  clearance shaft\n//    through receiver body (z=9.5..4 = 5.5 mm)  \u2192  insert engagement\n//    in donor tab (z=4..0 = 4 mm).  Total shaft = 12 mm. \u2713",
+      "replace": "//  SCREW FIT (M5 \u00d7 12 mm, DIN 7991)\n//  \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\n//  PIECE_H = 12 mm = screw length \u2192 shaft tip reaches z = 0 exactly.\n//    Head (flush at z=12)  \u2192  CS cone down to z=9.0  \u2192  clearance shaft\n//    through receiver body (z=9.0..4 = 5.0 mm)  \u2192  insert engagement\n//    in donor tab (z=4..0 = 4 mm).  Total shaft = 12 mm. \u2713"
+    },
+    {
+      "description": "Update PIECE_H inline comment",
+      "search": "PIECE_H   = 12;     // mm \u2014 total piece thickness (= M3\u00d712 screw length)",
+      "replace": "PIECE_H   = 12;     // mm \u2014 total piece thickness (= M5\u00d712 screw length)"
+    },
+    {
+      "description": "Update hardware parameters for M5",
+      "search": "// \u2500\u2500 Hardware \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nSCREW_D      =  3.2;  // M3 shaft clearance \u00d8 (mm)\nCS_D         =  6.0;  // M3 DIN 7991 countersunk head \u00d8 (mm)\nCS_DEPTH     =  2.5;  // countersink cone depth from top face (mm)\nINSERT_D     =  4.6;  // heat-set insert outer \u00d8 (mm)\nINSERT_DEPTH =  4.0;  // insert pocket depth = TAB_H (fills full tab zone)",
+      "replace": "// \u2500\u2500 Hardware \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nSCREW_D      =  5.3;  // M5 shaft clearance \u00d8 (mm)\nCS_D         = 10.0;  // M5 DIN 7991 countersunk head \u00d8 (mm)\nCS_DEPTH     =  3.0;  // countersink cone depth from top face (mm)\nINSERT_D     =  6.7;  // M5 heat-set insert outer \u00d8 (mm)\nINSERT_DEPTH =  4.0;  // insert pocket depth = TAB_H (fills full tab zone)"
+    }
+  ],
+  "pieces_to_rerender": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "html_changes": [
+    {
+      "description": "Update info-panel screw size",
+      "search": "Screws: 16 \u00d7 M3\u00d712<br>",
+      "replace": "Screws: 16 \u00d7 M5\u00d712<br>"
+    }
+  ],
+  "upload_paths": [
+    "stl/piece_0.stl",
+    "stl/piece_1.stl",
+    "stl/piece_2.stl",
+    "stl/piece_3.stl",
+    "stl/piece_4.stl",
+    "stl/piece_5.stl",
+    "stl/piece_6.stl",
+    "stl/piece_7.stl",
+    "stl/piece_8.stl",
+    "stl/piece_9.stl",
+    "stl/piece_10.stl",
+    "stl/piece_11.stl",
+    "index.html"
+  ]
+}

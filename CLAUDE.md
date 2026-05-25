@@ -148,31 +148,42 @@ next layer.  Install heat-set inserts into tabs **before** assembly.
 
 ---
 
-## 4. The `&` in the directory path — critical Windows gotcha
+## 4. The `&` in the directory path — Windows gotcha
 
 The project directory is `D:\2026\dev\o&o`.  The `&` character is a
-shell meta-character.
+shell meta-character in PowerShell and cmd.exe, but **not** in Windows
+file APIs or Python's `subprocess` when called correctly.
 
-**Rule: never call OpenSCAD directly from Python's `subprocess` or from
-PowerShell without wrapping via `cmd /c`.**
+### Python subprocess — pass a string, not a list
 
-### Wrong (silently fails or crashes):
 ```python
-subprocess.run([openscad_exe, "-D", f"RENDER_MODE=...", "-o", out, scad])
+# WRONG — Python's list2cmdline escapes every " in the string with \,
+# so cmd.exe receives \"C:\Program Files\...\" which it won't execute:
+subprocess.run(["cmd", "/c", inner], ...)
+
+# ALSO WRONG — same problem via shell=True (Python wraps the string in "..."):
+subprocess.run(inner, shell=True, ...)
+
+# CORRECT — pass the full command as a plain string with no shell.
+# Python calls CreateProcess(None, cmd_string, ...) directly.
+# CreateProcess handles quoted paths natively; & in the path is harmless.
+cmd = f'"{exe}" -D "RENDER_MODE=\\"piece\\";PIECE_IDX={idx}" -o "{out}" "{scad}"'
+subprocess.run(cmd, capture_output=True, text=True, timeout=300)
 ```
+
+The `\"` inside the `-D` value is the standard Windows escape for a
+literal quote character when passed via CreateProcess / CommandLineToArgvW.
+
+### PowerShell — cmd.exe wrapper IS still needed
+
+In PowerShell, `&` in a bare string is the call operator, and paths
+with `&` must be passed through `cmd /c` to avoid mis-parsing:
+
 ```powershell
-& "C:\Program Files\OpenSCAD\openscad.exe" -D "..." -o "..." "D:\2026\dev\o&o\..."
+cmd /c "`"$exe`" -D `"RENDER_MODE=\`"piece\`";PIECE_IDX=$i`" -o `"$out`" `"$scad`""
 ```
 
-### Correct (via cmd.exe which handles & literally inside quotes):
-```python
-inner = f'"{exe}" -D "RENDER_MODE=\\"piece\\";PIECE_IDX={idx}" -o "{out}" "{scad}"'
-cmd   = ["cmd", "/c", inner]
-subprocess.run(cmd, ...)
-```
-
-This is already implemented in `agents/stl_generator.py`.  Do not
-refactor it away.
+This pattern is used in `generate_stls.ps1` and must be preserved there.
 
 ---
 

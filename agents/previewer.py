@@ -85,8 +85,10 @@ def _patch_text(scad_changes: list[dict]) -> str | None:
 
 
 def _render_piece(scad_path: str, idx: int, out: Path) -> tuple[int, bool, str]:
-    inner  = f'"{OPENSCAD_EXE}" -D "RENDER_MODE=\\"piece\\";PIECE_IDX={idx}" -o "{out}" "{scad_path}"'
-    result = subprocess.run(["cmd", "/c", inner], capture_output=True, text=True, timeout=300)
+    # String (not list) → Python calls CreateProcess directly, no list2cmdline
+    # quoting.  The & in D:\2026\dev\o&o is harmless outside cmd.exe.
+    cmd    = f'"{OPENSCAD_EXE}" -D "RENDER_MODE=\\"piece\\";PIECE_IDX={idx}" -o "{out}" "{scad_path}"'
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
     if result.returncode == 0 and out.exists():
         kb = round(out.stat().st_size / 1024, 1)
         return idx, True, f"{kb} KB"

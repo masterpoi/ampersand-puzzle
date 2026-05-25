@@ -30,10 +30,11 @@ def _render_piece(idx: int, out_path: Path, verbose: bool) -> tuple[int, bool, s
     exe   = OPENSCAD_EXE
     out   = str(out_path)
 
-    # Build the command — must go through cmd /c because the project
-    # directory contains `&` which PowerShell / subprocess mis-parses.
-    inner = f'"{exe}" -D "RENDER_MODE=\\"piece\\";PIECE_IDX={idx}" -o "{out}" "{scad}"'
-    cmd   = ["cmd", "/c", inner]
+    # Pass a string directly to CreateProcess (not a list).
+    # Python's list2cmdline would escape inner quotes, breaking the call.
+    # CreateProcess handles quoted paths natively; & in the directory name
+    # is harmless outside of cmd.exe's shell parser.
+    cmd = f'"{exe}" -D "RENDER_MODE=\\"piece\\";PIECE_IDX={idx}" -o "{out}" "{scad}"'
 
     try:
         result = subprocess.run(
