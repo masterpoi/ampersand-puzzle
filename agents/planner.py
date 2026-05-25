@@ -42,25 +42,6 @@ from config import SCAD_FILE, INDEX_HTML, CLAUDE_MODEL, make_client
 
 # ── Tool definitions for the planner ──────────────────────────────────────────
 
-READ_FILE_TOOL = {
-    "name": "read_file",
-    "description": (
-        "Read the contents of a source file (SCAD or HTML). "
-        "Use this to understand the current state before drafting changes."
-    ),
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "path": {
-                "type": "string",
-                "enum": ["scad", "html"],
-                "description": "'scad' for the OpenSCAD puzzle file, 'html' for the preview page.",
-            }
-        },
-        "required": ["path"],
-    },
-}
-
 OUTPUT_PLAN_TOOL = {
     "name": "output_plan",
     "description": (
@@ -119,44 +100,47 @@ OUTPUT_PLAN_TOOL = {
 }
 
 
-def _handle_tool(tool_name: str, tool_input: dict) -> str:
-    if tool_name == "read_file":
-        path_key = tool_input["path"]
-        if path_key == "scad":
-            return SCAD_FILE.read_text(encoding="utf-8")
-        elif path_key == "html":
-            return INDEX_HTML.read_text(encoding="utf-8")
-        else:
-            return f"Unknown path key: {path_key}"
-    return "Unknown tool"
-
 
 def run(change_request: str, verbose: bool = False) -> dict:
     """
     Run the planner agent for the given change_request.
     Returns the plan dict.
+
+    Architecture: both source files are embedded directly in the user message so
+    the model has full context in one shot. Only the `output_plan` tool is
+    offered — there is no read_file round-trip — which means the model's only
+    available action is to produce the plan.  This is necessary because
+    `tool_choice="any"` is incompatible with `thinking=adaptive` (API 400), so
+    we cannot force tool use directly; instead we reduce the choice set to one.
     """
     client = make_client()
 
+    # Read source files once upfront
+    scad_text = SCAD_FILE.read_text(encoding="utf-8")
+    html_text = INDEX_HTML.read_text(encoding="utf-8")
+
     system_prompt = """You are a precision engineering planning agent for a 12-piece ampersand shatter puzzle built in OpenSCAD.
 
-Your job:
-1. Read the SCAD file (and HTML if relevant) to understand the current state.
-2. Analyse the user's change request carefully.
-3. Output a structured JSON plan via the `output_plan` tool.
+The SCAD source file and the HTML preview page are provided in the user message.
+Your ONLY available action is to call the `output_plan` tool — do not write prose.
 
 Key SCAD knowledge:
 - TAB_JOINTS array: each row is [donor, receiver, cx, cy, dx, dy, half_w]
-  where cx/cy is the joint centre and dx/dy is the unit normal to the shared edge.
-  The screw sits at (cx + dx*TAB_REACH/2, cy + dy*TAB_REACH/2).
-- PIECE_H = 12 mm, TAB_H = 4 mm, TAB_REACH = 8 mm (unless overridden).
-- Pieces are labelled P0–P11. Piece 11 is often geometrically empty (no glyph overlap).
-- Always identify the TAB_JOINTS row index(es) that correspond to the affected connection.
-- When changing a joint cx/cy, both donor and receiver pieces must be re-rendered.
+  where cx/cy is the joint midpoint and dx/dy is the unit normal into the receiver.
+  Screw position: (cx + dx*TAB_REACH/2, cy + dy*TAB_REACH/2).
+- PIECE_H = 12 mm, TAB_H = 4 mm, TAB_REACH = 8 mm (unless file says otherwise).
+- Pieces are P0–P11. Piece 11 is often geometrically near-empty (fine by design).
+- PIECE_POLYS defines polygon outlines for each piece. Moving a cut line means
+  adjusting the shared vertex x (or y) coordinates in the two adjacent piece polygons.
+- Always re-render both the donor AND receiver of any modified joint.
 
-For `scad_changes`, provide exact literal strings so that a simple str.replace() can apply them safely.
-For `pieces_to_rerender`, include both donor and receiver piece indices for any changed joint.
-For `upload_paths`, include every changed STL (e.g. stl/piece_N.stl) plus index.html if HTML changed."""
+Rules for `scad_changes`:
+- Each search string must be an exact literal substring of the SCAD file.
+- If a polygon vertex must change, include the full polygon array in search/replace
+  so the replacement is unambiguous.
+
+Rules for `pieces_to_rerender`: list every piece index whose SCAD geometry changes.
+Rules for `upload_paths`: every rebuilt stl/piece_N.stl plus index.html if HTML changed."""
 
     messages = [
         {
@@ -164,18 +148,33 @@ For `upload_paths`, include every changed STL (e.g. stl/piece_N.stl) plus index.
             "content": [
                 {
                     "type": "text",
-                    "text": change_request,
+                    "text": f"SCAD source (ampersand_lap_joint.scad):\n\n{scad_text}",
                     "cache_control": {"type": "ephemeral"},
-                }
+                },
+                {
+                    "type": "text",
+                    "text": f"HTML preview (index.html):\n\n{html_text}",
+                    "cache_control": {"type": "ephemeral"},
+                },
+                {
+                    "type": "text",
+                    "text": (
+                        f"Change request: {change_request}\n\n"
+                        "Call output_plan now with the complete structured plan."
+                    ),
+                },
             ],
         }
     ]
 
-    tools = [READ_FILE_TOOL, OUTPUT_PLAN_TOOL]
+    # Only output_plan is available — the model's only legal move is to produce the plan.
+    tools = [OUTPUT_PLAN_TOOL]
 
-    plan = None
+    plan   = None
+    nudges = 0
+    MAX_TURNS = 5
 
-    while True:
+    for _turn in range(MAX_TURNS):
         response = client.messages.create(
             model=CLAUDE_MODEL,
             max_tokens=8192,
@@ -192,36 +191,30 @@ For `upload_paths`, include every changed STL (e.g. stl/piece_N.stl) plus index.
         )
 
         if verbose:
-            print(f"[planner] stop_reason={response.stop_reason}", file=sys.stderr)
+            print(f"[planner] turn={_turn} stop_reason={response.stop_reason}", file=sys.stderr)
 
-        # Accumulate assistant turn
         messages.append({"role": "assistant", "content": response.content})
 
-        if response.stop_reason == "end_turn":
-            break
-
         if response.stop_reason == "tool_use":
-            tool_results = []
             for block in response.content:
-                if block.type != "tool_use":
-                    continue
+                if block.type == "tool_use" and block.name == "output_plan":
+                    plan = block.input
+                    if verbose:
+                        print(f"[planner] output_plan called — plan captured.", file=sys.stderr)
+                    break
+            if plan is not None:
+                break
 
-                if verbose:
-                    print(f"[planner] tool_call: {block.name}({json.dumps(block.input)[:120]})", file=sys.stderr)
-
-                if block.name == "output_plan":
-                    plan = block.input  # capture the plan
-                    result_text = "Plan recorded."
-                else:
-                    result_text = _handle_tool(block.name, block.input)
-
-                tool_results.append({
-                    "type": "tool_result",
-                    "tool_use_id": block.id,
-                    "content": result_text,
+        elif response.stop_reason == "end_turn":
+            if nudges < 2:
+                nudges += 1
+                print(f"[planner] WARNING: model replied with text (nudge {nudges}/2)", file=sys.stderr)
+                messages.append({
+                    "role": "user",
+                    "content": "You must call the output_plan tool now. Do not reply with text.",
                 })
-
-            messages.append({"role": "user", "content": tool_results})
+            else:
+                break
         else:
             break
 

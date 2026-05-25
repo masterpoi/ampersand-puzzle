@@ -16,8 +16,10 @@ Pipeline stages:
   5.  Uploader       - pushes changed files to Scaleway S3
 
 Sub-commands (no change request needed):
+  setup    - auto-configure AWS CLI profile from scw (Scaleway) CLI (run once)
   history  - show recent changes from git log
   bom      - generate Bill of Materials (bom.md / bom.html / bom.json)
+  upload   - full re-sync: upload all STLs + index.html to Scaleway
 
 Usage:
   python orchestrator.py "Move the joint between P3 and P7 one millimetre right"
@@ -51,6 +53,21 @@ def _step(label: str) -> None:
     print(f"{'='*60}", flush=True)
 
 
+def _cleanup_previs() -> None:
+    """Delete stl/preview/ and preview.html left by an aborted previs run."""
+    import shutil
+    from agents.previewer import PREVIEW_DIR, PREVIEW_HTML
+    if PREVIEW_DIR.exists():
+        shutil.rmtree(PREVIEW_DIR, ignore_errors=True)
+        print("[orchestrator] Cleaned up stl/preview/")
+    if PREVIEW_HTML.exists():
+        try:
+            PREVIEW_HTML.unlink()
+            print("[orchestrator] Cleaned up preview.html")
+        except OSError:
+            pass
+
+
 def _show_history() -> None:
     from agents.versioner import log
     rows = log(15)
@@ -68,6 +85,18 @@ def _run_bom(verbose: bool) -> None:
     _step("BOM Generator")
     from agents.bom_generator import run as bom_run
     bom_run(verbose=verbose, open_browser=True)
+
+
+def _run_setup() -> None:
+    import setup_aws
+    setup_aws.main()
+
+
+def _run_upload_all(verbose: bool) -> None:
+    _step("Uploader: full re-sync to Scaleway")
+    from agents.uploader import run_all
+    result = run_all(verbose=verbose)
+    print(f"[uploader] {len(result['ok'])} uploaded, {len(result['errors'])} errors.")
 
 
 def main() -> None:
@@ -101,6 +130,14 @@ def main() -> None:
         _run_bom(args.verbose)
         return
 
+    if args.request == "setup":
+        _run_setup()
+        return
+
+    if args.request == "upload":
+        _run_upload_all(args.verbose)
+        return
+
     if not args.plan and not args.request:
         parser.error("Provide a change request, 'history', 'bom', or --plan FILE.")
 
@@ -125,13 +162,7 @@ def main() -> None:
         print(f"  HTML changes    : {len(plan.get('html_changes', []))}")
         print(f"  Upload paths    : {plan.get('upload_paths', [])}")
 
-    # Save plan to plans/ for audit trail (unless dry-run or skip-commit)
-    if not args.dry_run and not args.skip_commit:
-        from agents.versioner import save_plan as version_save_plan
-        plan_path = version_save_plan(plan, verbose=args.verbose)
-        print(f"\n[versioner] Plan recorded: {plan_path.name}")
-
-    # Optionally also save to a user path
+    # Optionally save to an explicit user path (plans/ audit written after confirmation)
     if args.save_plan:
         Path(args.save_plan).write_text(json.dumps(plan, indent=2), encoding="utf-8")
         print(f"[orchestrator] Plan also saved to {args.save_plan}")
@@ -142,6 +173,9 @@ def main() -> None:
         print("[orchestrator] --dry-run: stopping before file changes.")
         return
 
+    # auto-proceed when --yes or stdin is not a TTY (piped/scripted)
+    confirmed = args.yes or not sys.stdin.isatty()
+
     # ── Stage 1c: Previs ───────────────────────────────────────────────────────
     if not args.skip_previs and plan.get("pieces_to_rerender"):
         _step("Stage 1c — Previs: before/after preview")
@@ -149,33 +183,36 @@ def main() -> None:
 
         previs_run(plan, open_browser=True, verbose=args.verbose)
 
-        if args.yes:
-            print("[orchestrator] --yes: proceeding automatically.")
-        elif sys.stdin.isatty():
+        if confirmed:
+            print("[orchestrator] --yes / non-interactive: proceeding automatically.")
+        else:
             try:
                 answer = input("\n  Proceed with changes? [y/N] ").strip().lower()
             except (KeyboardInterrupt, EOFError):
-                print("\n[orchestrator] Aborted.")
-                return
+                answer = ""
             if answer not in ("y", "yes"):
+                _cleanup_previs()
                 print("[orchestrator] Aborted.")
                 return
-        # Non-interactive (piped): auto-proceed silently
+
     elif not args.skip_previs:
-        # No geometry changes — still show the plan diff
+        # No geometry changes — still show the plan diff and ask to confirm
         from agents.previewer import show_diff
         show_diff(plan)
-        if not args.yes and sys.stdin.isatty() and (
-            plan.get("scad_changes") or plan.get("html_changes")
-        ):
+        if not confirmed and (plan.get("scad_changes") or plan.get("html_changes")):
             try:
                 answer = input("\n  Proceed with changes? [y/N] ").strip().lower()
             except (KeyboardInterrupt, EOFError):
-                print("\n[orchestrator] Aborted.")
-                return
+                answer = ""
             if answer not in ("y", "yes"):
                 print("[orchestrator] Aborted.")
                 return
+
+    # ── Stage 1b: Save plan to audit trail (only after confirmation) ──────────
+    if not args.skip_commit:
+        from agents.versioner import save_plan as version_save_plan
+        plan_path = version_save_plan(plan, verbose=args.verbose)
+        print(f"\n[versioner] Plan recorded: {plan_path.name}")
 
     # ── Stage 2: SCAD Editor ──────────────────────────────────────────────────
     scad_changes = plan.get("scad_changes", [])
@@ -231,11 +268,16 @@ def main() -> None:
     upload_paths = plan.get("upload_paths", [])
     if upload_paths and not args.skip_upload:
         _step("Stage 5 — Uploader: pushing to Scaleway")
-        from agents.uploader import run as upload_run
+        from agents.uploader import run as upload_run, WEBSITE_URL
         result = upload_run(upload_paths, verbose=args.verbose)
-        print(f"[uploader] {len(result['ok'])}/{len(upload_paths)} files uploaded.")
+        ok_n   = len(result["ok"])
+        tot_n  = len(upload_paths)
+        print(f"[uploader] {ok_n}/{tot_n} files uploaded.")
         if result["errors"]:
             print(f"[uploader] Errors: {result['errors']}")
+            print(f"[uploader] Re-run failed uploads:  python orchestrator.py upload")
+        if ok_n:
+            print(f"[uploader] Site -> {WEBSITE_URL}")
     elif args.skip_upload:
         print("\n[orchestrator] Stage 5 skipped (--skip-upload).")
     else:

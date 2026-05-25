@@ -19,8 +19,10 @@ The previewer never modifies the real SCAD file or stl/ directory.
 
 import json
 import os
+import socket
 import subprocess
 import sys
+import time
 import webbrowser
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -42,6 +44,44 @@ YELLOW = "\033[93m"
 CYAN   = "\033[96m"
 BOLD   = "\033[1m"
 DIM    = "\033[2m"
+
+HTTP_PORT = 3456
+
+
+# ── 0. Local HTTP server ───────────────────────────────────────────────────────
+
+def _ensure_server(port: int = HTTP_PORT) -> None:
+    """Start a local http.server on *port* if nothing is already listening there.
+
+    The server is spawned as a background subprocess (detached from this
+    process) and serves BASE_DIR so that preview.html and stl/ are reachable
+    at http://localhost:<port>/.
+    """
+    def _reachable() -> bool:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        ok = s.connect_ex(("127.0.0.1", port)) == 0
+        s.close()
+        return ok
+
+    if _reachable():
+        return  # already up — nothing to do
+
+    subprocess.Popen(
+        [sys.executable, "-m", "http.server", str(port),
+         "--directory", str(BASE_DIR)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    print(f"[previewer] Started http.server :{port}  (serving {BASE_DIR})", file=sys.stderr)
+
+    # Wait up to 3 s for the server to accept connections
+    deadline = time.monotonic() + 3.0
+    while time.monotonic() < deadline:
+        if _reachable():
+            return
+        time.sleep(0.1)
+
+    print(f"[previewer] WARNING: server on :{port} did not become ready in 3 s", file=sys.stderr)
 
 
 # ── 1. Terminal diff ───────────────────────────────────────────────────────────
@@ -350,10 +390,11 @@ def run(plan: dict, open_browser: bool = True, verbose: bool = False) -> bool:
     result = render_preview_stls(plan, verbose=verbose)
 
     html_path = generate_preview_html(plan, result)
-    url = "http://localhost:3456/preview.html"
-    print(f"[previewer] Preview ready → {url}")
+    url = f"http://localhost:{HTTP_PORT}/preview.html"
+    print(f"[previewer] Preview ready -> {url}")
 
     if open_browser:
+        _ensure_server(HTTP_PORT)
         try:
             webbrowser.open(url)
         except Exception:
