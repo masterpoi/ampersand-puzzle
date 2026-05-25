@@ -39,10 +39,14 @@ D:\2026\dev\o&o\
 │   ├── stl_generator.py         ← parallel OpenSCAD renders
 │   ├── preview_updater.py       ← applies search/replace to index.html
 │   ├── uploader.py              ← AWS CLI uploads to Scaleway S3
-│   └── versioner.py             ← git commit / tag / log helpers
+│   ├── versioner.py             ← git commit / tag / log helpers
+│   ├── previewer.py             ← before/after 3D diff viewer (Stage 1c)
+│   └── bom_generator.py         ← Bill of Materials from SCAD + STL volumes
 ├── plans/                       ← audit trail: one JSON plan per run (tracked)
+├── bom.md / bom.html / bom.json ← generated BOM (tracked; regenerate with 'bom')
 ├── stl/                         ← generated STLs (NOT in git — regenerate as needed)
-│   └── print/                   ← print-ready copies (same geometry)
+│   ├── print/                   ← print-ready copies (same geometry)
+│   └── preview/                 ← temporary previs renders (NOT in git)
 └── .claude/
     └── launch.json              ← preview server config (port 3456)
 ```
@@ -192,6 +196,14 @@ $out      = "D:\2026\dev\o&o\stl\piece_5.stl"
 cmd /c "`"$openscad`" -D `"RENDER_MODE=\`"piece\`";PIECE_IDX=5`" -o `"$out`" `"$scad`""
 ```
 
+### OpenSCAD exports ASCII STL, not binary:
+OpenSCAD's output files start with `solid OpenSCAD_Model\n`.  Any code
+that reads STL files must handle ASCII STL format (vertex lines, not
+packed float32 triangles).  `agents/bom_generator.py` handles both;
+use its `stl_volume_mm3()` function as a reference if you need volumes.
+Binary STL detection: if `data[:6].lower() == b"solid "` AND
+`"endsolid"` appears near the end, treat as ASCII.
+
 ### About piece_11:
 `stl/piece_11.stl` will often be absent or empty.  The bottom-right
 polygon of the grid barely overlaps the `&` glyph.  OpenSCAD produces
@@ -279,16 +291,23 @@ bucket on the same account is the reference for correct policy setup.
 python orchestrator.py "describe the change you want in plain English"
 ```
 
+### Sub-commands:
+```powershell
+python orchestrator.py history    # show recent git-tagged changes
+python orchestrator.py bom        # generate BOM (opens bom.html in browser)
+```
+
 ### Useful flags:
 ```
---dry-run          Plan only — prints the JSON plan, no files modified
+--dry-run          Print the plan diff only — no files modified, no renders
+--skip-previs      Skip the before/after preview render (Stage 1c)
+-y / --yes         Auto-confirm the previs prompt (useful in CI / scripts)
 --skip-render      Skip OpenSCAD rendering (still edits SCAD + HTML)
 --skip-upload      Skip Scaleway upload
 --skip-commit      Skip git commit/tag
 --plan FILE        Load a pre-computed plan, skip the Planner agent
 --save-plan FILE   Also save the plan to FILE (plans/ is always written)
 -v / --verbose     Verbose per-agent output
-history            Show recent changes (reads git log)
 ```
 
 ### Pipeline stages in order:
@@ -297,6 +316,7 @@ history            Show recent changes (reads git log)
 |-------|------|--------------|
 | 1 | `agents/planner.py` | Claude reads SCAD + HTML, emits a JSON plan via `output_plan` tool |
 | 1b | `agents/versioner.py` | Saves plan to `plans/` and stages it |
+| 1c | `agents/previewer.py` | Renders affected pieces from patched SCAD to `stl/preview/`; writes `preview.html`; asks y/N to proceed |
 | 2 | `agents/scad_editor.py` | Applies `scad_changes` as `str.replace()` edits |
 | 3 | `agents/stl_generator.py` | Parallel OpenSCAD renders for `pieces_to_rerender` |
 | 4 | `agents/preview_updater.py` | Applies `html_changes` to `index.html` |
@@ -434,6 +454,15 @@ python agents/uploader.py stl/piece_5.stl stl/piece_9.stl index.html
 ```powershell
 python orchestrator.py --dry-run "your request here"
 ```
+
+### Generate / refresh the BOM:
+```powershell
+python orchestrator.py bom        # prints summary, opens bom.html in browser
+python agents/bom_generator.py    # same, run directly
+```
+The BOM reads hardware specs from the SCAD file and computes filament
+volume from ASCII STL files using the signed-tetrahedra formula (no deps).
+Piece 11 is often missing — the BOM reports it as a warning, not an error.
 
 ### See change history:
 ```powershell
