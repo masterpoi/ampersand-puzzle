@@ -70,7 +70,7 @@ SCREW_D      =  3.2;  // M3 shaft clearance Ø (mm)
 CS_D         =  6.0;  // M3 DIN 7991 countersunk head Ø (mm)
 CS_DEPTH     =  2.5;  // countersink cone depth from top face (mm)
 INSERT_D     =  4.6;  // heat-set insert outer Ø (mm)
-INSERT_DEPTH =  4.0;  // insert pocket depth = TAB_H (fills full tab zone)
+INSERT_DEPTH =  5.0;  // insert pocket depth = TAB_H (fills full tab zone)
 
 // ── Exploded view ─────────────────────────────────────────────────────────
 EXPLODE_SCALE = 1.0;  // 0 = assembled, 1 = default spread

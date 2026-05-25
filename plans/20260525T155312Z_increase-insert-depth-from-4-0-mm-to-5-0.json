@@ -1,0 +1,37 @@
+{
+  "summary": "Increase INSERT_DEPTH from 4.0 mm to 5.0 mm so the insert pocket extends through the full TAB_H = 5 mm tab thickness.",
+  "scad_changes": [
+    {
+      "description": "Match insert pocket depth to new TAB_H so the hole goes fully through the tab.",
+      "search": "INSERT_DEPTH =  4.0;  // insert pocket depth = TAB_H (fills full tab zone)",
+      "replace": "INSERT_DEPTH =  5.0;  // insert pocket depth = TAB_H (fills full tab zone)"
+    }
+  ],
+  "pieces_to_rerender": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10
+  ],
+  "html_changes": [],
+  "upload_paths": [
+    "stl/piece_0.stl",
+    "stl/piece_1.stl",
+    "stl/piece_2.stl",
+    "stl/piece_3.stl",
+    "stl/piece_4.stl",
+    "stl/piece_5.stl",
+    "stl/piece_6.stl",
+    "stl/piece_7.stl",
+    "stl/piece_8.stl",
+    "stl/piece_9.stl",
+    "stl/piece_10.stl"
+  ]
+}
