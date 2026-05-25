@@ -1,0 +1,58 @@
+{
+  "summary": "Shift the shared corner vertex (148,135) \u2192 (155,135) to push the piece 6/7 cut rightward, giving piece 6 more body while keeping a clear separation.",
+  "scad_changes": [
+    {
+      "description": "Piece 6: replace top-right vertex (148,135) with (155,135) to extend body rightward.",
+      "search": "    /* 6 mid-ctr-R    */ [[108, 48],[155, 60],[148,135],[ 92,122]],",
+      "replace": "    /* 6 mid-ctr-R    */ [[108, 48],[155, 60],[155,135],[ 92,122]],"
+    },
+    {
+      "description": "Piece 7: replace bottom-left vertex (148,135) with (155,135) to match new 6/7 cut.",
+      "search": "    /* 7 mid-right    */ [[155, 70],[200, 62],[200,138],[148,135]],",
+      "replace": "    /* 7 mid-right    */ [[155, 70],[200, 62],[200,138],[155,135]],"
+    },
+    {
+      "description": "Piece 10: update shared corner (148,135) \u2192 (155,135) for consistency.",
+      "search": "    /* 10 bot-ctr-R   */ [[ 92,122],[148,135],[145,200],[105,200]],",
+      "replace": "    /* 10 bot-ctr-R   */ [[ 92,122],[155,135],[145,200],[105,200]],"
+    },
+    {
+      "description": "Piece 11: update shared corner (148,135) \u2192 (155,135) for consistency.",
+      "search": "    /* 11 bot-right   */ [[148,135],[200,138],[200,200],[145,200]],",
+      "replace": "    /* 11 bot-right   */ [[155,135],[200,138],[200,200],[145,200]],"
+    },
+    {
+      "description": "Joint 8 (P6\u2192P7): new edge is vertical at x=155 from y=70 to y=135; midpoint (155,102.5), normal (1,0).",
+      "search": "    [  6,  7, 151.5, 102.5,  0.994,  0.107, 10 ],  //  8  P6 \u2192 P7",
+      "replace": "    [  6,  7, 155.0, 102.5,  1.000,  0.000, 10 ],  //  8  P6 \u2192 P7"
+    },
+    {
+      "description": "Joint 10 (P6\u2192P10): edge (92,122)\u2192(155,135); midpoint (123.5,128.5), normal (-0.202,0.979).",
+      "search": "    [  6, 10, 120.0, 128.5, -0.226,  0.974, 10 ],  // 10  P6 \u2192 P10",
+      "replace": "    [  6, 10, 123.5, 128.5, -0.202,  0.979, 10 ],  // 10  P6 \u2192 P10"
+    },
+    {
+      "description": "Joint 11 (P7\u2192P11): edge (155,135)\u2192(200,138); midpoint (177.5,136.5), normal (-0.067,0.998).",
+      "search": "    [  7, 11, 174.0, 136.5, -0.058,  0.998, 10 ],  // 11  P7 \u2192 P11",
+      "replace": "    [  7, 11, 177.5, 136.5, -0.067,  0.998, 10 ],  // 11  P7 \u2192 P11"
+    },
+    {
+      "description": "Joint 14 (P10\u2192P11): edge (155,135)\u2192(145,200); midpoint (150,167.5), normal (0.988,0.152).",
+      "search": "    [ 10, 11, 146.5, 167.5,  0.999,  0.046, 10 ],  // 14  P10 \u2192 P11",
+      "replace": "    [ 10, 11, 150.0, 167.5,  0.988,  0.152, 10 ],  // 14  P10 \u2192 P11"
+    }
+  ],
+  "pieces_to_rerender": [
+    6,
+    7,
+    10,
+    11
+  ],
+  "html_changes": [],
+  "upload_paths": [
+    "stl/piece_6.stl",
+    "stl/piece_7.stl",
+    "stl/piece_10.stl",
+    "stl/piece_11.stl"
+  ]
+}
