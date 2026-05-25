@@ -4,7 +4,7 @@
 //
 //  MECHANISM
 //  ─────────────────────────────────────────────────────────────────────
-//  Each piece is z-split at TAB_H = 4 mm:
+//  Each piece is z-split at TAB_H = 5 mm:
 //    Lower zone (z = 0 … TAB_H):   tab slabs extending into neighbours
 //    Upper zone (z = TAB_H … PIECE_H):  main body of this piece
 //
@@ -18,8 +18,8 @@
 //  ──────────────────────────────────
 //  PIECE_H = 12 mm = screw length → shaft tip reaches z = 0 exactly.
 //    Head (flush at z=12)  →  CS cone down to z=9.5  →  clearance shaft
-//    through receiver body (z=9.5..4 = 5.5 mm)  →  insert engagement
-//    in donor tab (z=4..0 = 4 mm).  Total shaft = 12 mm. ✓
+//    through receiver body (z=9.5..5 = 4.5 mm)  →  insert engagement
+//    in donor tab (z=5..0 = 5 mm).  Total shaft = 12 mm. ✓
 //
 //  ASSEMBLY SEQUENCE (topological sort of donor→receiver DAG)
 //  ──────────────────────────────────────────────────────────
@@ -52,7 +52,7 @@ PIECE_IDX   = 0;
 
 // ── Dimensions ────────────────────────────────────────────────────────────
 PIECE_H   = 12;     // mm — total piece thickness (= M3×12 screw length)
-TAB_H     =  4;     // mm — tab height; lower zone z = 0 … TAB_H
+TAB_H     =  5;     // mm — tab height; lower zone z = 0 … TAB_H
 TAB_REACH = 15;     // mm — how far each tab protrudes into neighbour's xy
 TAB_GAP   =  0.15;  // mm — recess clearance added on all sides of tab
 

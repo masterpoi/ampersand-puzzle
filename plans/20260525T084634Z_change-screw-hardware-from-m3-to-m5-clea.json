@@ -1,0 +1,54 @@
+{
+  "summary": "Change screw hardware from M3 to M5 (clearance, countersink, and heat-set insert dimensions); update header comments accordingly.",
+  "scad_changes": [
+    {
+      "description": "Update top-of-file header to reference M5 screws",
+      "search": "//  OpenSCAD  |  12 pieces  |  no backing plate  |  16 \u00d7 M3 \u00d7 12 mm",
+      "replace": "//  OpenSCAD  |  12 pieces  |  no backing plate  |  16 \u00d7 M5 \u00d7 12 mm"
+    },
+    {
+      "description": "Update SCREW FIT block header from M3 to M5",
+      "search": "//  SCREW FIT (M3 \u00d7 12 mm, DIN 7991)",
+      "replace": "//  SCREW FIT (M5 \u00d7 12 mm, DIN 7991)"
+    },
+    {
+      "description": "Update PIECE_H comment reference from M3 to M5",
+      "search": "PIECE_H   = 12;     // mm \u2014 total piece thickness (= M3\u00d712 screw length)",
+      "replace": "PIECE_H   = 12;     // mm \u2014 total piece thickness (= M5\u00d712 screw length)"
+    },
+    {
+      "description": "Update hardware constants block: shaft \u00d8, head \u00d8, countersink depth, insert \u00d8 for M5",
+      "search": "SCREW_D      =  3.2;  // M3 shaft clearance \u00d8 (mm)\nCS_D         =  6.0;  // M3 DIN 7991 countersunk head \u00d8 (mm)\nCS_DEPTH     =  2.5;  // countersink cone depth from top face (mm)\nINSERT_D     =  4.6;  // heat-set insert outer \u00d8 (mm)\nINSERT_DEPTH =  4.0;  // insert pocket depth = TAB_H (fills full tab zone)",
+      "replace": "SCREW_D      =  5.3;  // M5 shaft clearance \u00d8 (mm)\nCS_D         = 10.0;  // M5 DIN 7991 countersunk head \u00d8 (mm)\nCS_DEPTH     =  3.0;  // countersink cone depth from top face (mm)\nINSERT_D     =  6.4;  // M5 heat-set insert outer \u00d8 (mm)\nINSERT_DEPTH =  4.0;  // insert pocket depth = TAB_H (fills full tab zone)"
+    }
+  ],
+  "pieces_to_rerender": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11
+  ],
+  "html_changes": [],
+  "upload_paths": [
+    "stl/piece_0.stl",
+    "stl/piece_1.stl",
+    "stl/piece_2.stl",
+    "stl/piece_3.stl",
+    "stl/piece_4.stl",
+    "stl/piece_5.stl",
+    "stl/piece_6.stl",
+    "stl/piece_7.stl",
+    "stl/piece_8.stl",
+    "stl/piece_9.stl",
+    "stl/piece_10.stl",
+    "stl/piece_11.stl"
+  ]
+}
