@@ -180,7 +180,7 @@ Rules for `upload_paths`: every rebuilt stl/piece_N.stl; add index.html if HTML 
     for _turn in range(MAX_NUDGES + 1):
         response = client.messages.create(
             model=CLAUDE_MODEL,
-            max_tokens=8192,
+            max_tokens=32000,   # adaptive thinking consumes tokens before tool call
             thinking={"type": "adaptive"},
             system=[
                 {
@@ -216,16 +216,16 @@ Rules for `upload_paths`: every rebuilt stl/piece_N.stl; add index.html if HTML 
             if plan is not None:
                 break
 
-        elif response.stop_reason == "end_turn":
+        elif response.stop_reason in ("end_turn", "max_tokens"):
             nudges += 1
             if nudges > MAX_NUDGES:
                 break
-            print(f"[planner] WARNING: text response instead of tool call (nudge {nudges}/{MAX_NUDGES})",
+            reason = "hit the token limit" if response.stop_reason == "max_tokens" else "replied with text"
+            print(f"[planner] WARNING: model {reason} (nudge {nudges}/{MAX_NUDGES})",
                   file=sys.stderr)
             messages.append({
                 "role": "user",
                 "content": (
-                    "You responded with text. That is not valid here. "
                     "Your analysis is complete — now call output_plan to record it. "
                     "Required fields: summary (str), scad_changes (list of "
                     "{description, search, replace}), pieces_to_rerender (list of ints), "
