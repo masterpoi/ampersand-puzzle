@@ -122,25 +122,24 @@ def run(change_request: str, verbose: bool = False) -> dict:
     system_prompt = """You are a precision engineering planning agent for a 12-piece ampersand shatter puzzle built in OpenSCAD.
 
 The SCAD source file and the HTML preview page are provided in the user message.
-Your ONLY available action is to call the `output_plan` tool — do not write prose.
+Your ONLY output must be a single call to the `output_plan` tool. Never write prose.
 
-Key SCAD knowledge:
-- TAB_JOINTS array: each row is [donor, receiver, cx, cy, dx, dy, half_w]
-  where cx/cy is the joint midpoint and dx/dy is the unit normal into the receiver.
-  Screw position: (cx + dx*TAB_REACH/2, cy + dy*TAB_REACH/2).
-- PIECE_H = 12 mm, TAB_H = 4 mm, TAB_REACH = 8 mm (unless file says otherwise).
-- Pieces are P0–P11. Piece 11 is often geometrically near-empty (fine by design).
-- PIECE_POLYS defines polygon outlines for each piece. Moving a cut line means
-  adjusting the shared vertex x (or y) coordinates in the two adjacent piece polygons.
-- Always re-render both the donor AND receiver of any modified joint.
+Key SCAD knowledge (read actual values from the file — these are defaults):
+- PIECE_H = 12 mm, TAB_H = 5 mm, TAB_REACH = 15 mm, TAB_GAP = 0.15 mm
+- TAB_JOINTS: each row is [donor, receiver, cx, cy, dx, dy, half_w]
+  cx/cy = joint midpoint; dx/dy = unit normal pointing into receiver.
+  Screw sits at (cx + dx*TAB_REACH/2, cy + dy*TAB_REACH/2).
+- PIECE_POLYS: 12 polygon outlines. Moving a cut line means changing the shared
+  vertex coordinates between the two adjacent piece polygons.
+- Always re-render both pieces on either side of any modified boundary.
 
 Rules for `scad_changes`:
-- Each search string must be an exact literal substring of the SCAD file.
-- If a polygon vertex must change, include the full polygon array in search/replace
-  so the replacement is unambiguous.
+- Every search string must be a verbatim literal substring of the SCAD file.
+- When editing a PIECE_POLYS entry, include the entire polygon line so the
+  replacement is unambiguous (no partial-line matches).
 
-Rules for `pieces_to_rerender`: list every piece index whose SCAD geometry changes.
-Rules for `upload_paths`: every rebuilt stl/piece_N.stl plus index.html if HTML changed."""
+Rules for `pieces_to_rerender`: every piece whose polygon or joint changes.
+Rules for `upload_paths`: every rebuilt stl/piece_N.stl; add index.html if HTML changed."""
 
     messages = [
         {
@@ -160,7 +159,9 @@ Rules for `upload_paths`: every rebuilt stl/piece_N.stl plus index.html if HTML 
                     "type": "text",
                     "text": (
                         f"Change request: {change_request}\n\n"
-                        "Call output_plan now with the complete structured plan."
+                        "Analyse the SCAD file above, then call output_plan with your "
+                        "complete structured plan. Your response must be exactly one "
+                        "output_plan tool call — no prose before or after."
                     ),
                 },
             ],
@@ -168,13 +169,15 @@ Rules for `upload_paths`: every rebuilt stl/piece_N.stl plus index.html if HTML 
     ]
 
     # Only output_plan is available — the model's only legal move is to produce the plan.
+    # (tool_choice="any" is incompatible with thinking=adaptive, so we reduce the
+    #  choice set to one tool and rely on forceful prompting + nudges.)
     tools = [OUTPUT_PLAN_TOOL]
 
-    plan   = None
-    nudges = 0
-    MAX_TURNS = 5
+    plan      = None
+    nudges    = 0
+    MAX_NUDGES = 4   # allow several attempts before giving up
 
-    for _turn in range(MAX_TURNS):
+    for _turn in range(MAX_NUDGES + 1):
         response = client.messages.create(
             model=CLAUDE_MODEL,
             max_tokens=8192,
@@ -191,7 +194,15 @@ Rules for `upload_paths`: every rebuilt stl/piece_N.stl plus index.html if HTML 
         )
 
         if verbose:
-            print(f"[planner] turn={_turn} stop_reason={response.stop_reason}", file=sys.stderr)
+            u = response.usage
+            cache_hit  = getattr(u, "cache_read_input_tokens",    0) or 0
+            cache_new  = getattr(u, "cache_creation_input_tokens", 0) or 0
+            print(
+                f"[planner] turn={_turn}  stop={response.stop_reason}"
+                f"  in={u.input_tokens}  out={u.output_tokens}"
+                f"  cache_hit={cache_hit}  cache_new={cache_new}",
+                file=sys.stderr,
+            )
 
         messages.append({"role": "assistant", "content": response.content})
 
@@ -200,21 +211,29 @@ Rules for `upload_paths`: every rebuilt stl/piece_N.stl plus index.html if HTML 
                 if block.type == "tool_use" and block.name == "output_plan":
                     plan = block.input
                     if verbose:
-                        print(f"[planner] output_plan called — plan captured.", file=sys.stderr)
+                        print("[planner] output_plan captured.", file=sys.stderr)
                     break
             if plan is not None:
                 break
 
         elif response.stop_reason == "end_turn":
-            if nudges < 2:
-                nudges += 1
-                print(f"[planner] WARNING: model replied with text (nudge {nudges}/2)", file=sys.stderr)
-                messages.append({
-                    "role": "user",
-                    "content": "You must call the output_plan tool now. Do not reply with text.",
-                })
-            else:
+            nudges += 1
+            if nudges > MAX_NUDGES:
                 break
+            print(f"[planner] WARNING: text response instead of tool call (nudge {nudges}/{MAX_NUDGES})",
+                  file=sys.stderr)
+            messages.append({
+                "role": "user",
+                "content": (
+                    "You responded with text. That is not valid here. "
+                    "Your analysis is complete — now call output_plan to record it. "
+                    "Required fields: summary (str), scad_changes (list of "
+                    "{description, search, replace}), pieces_to_rerender (list of ints), "
+                    "html_changes (list), upload_paths (list of str). "
+                    "Use verbatim strings from the SCAD file for every search value. "
+                    "Call output_plan NOW — no prose."
+                ),
+            })
         else:
             break
 
