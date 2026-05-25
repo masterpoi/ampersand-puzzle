@@ -16,5 +16,9 @@ stl/
 *.DS_Store
 Thumbs.db
 
+# Generated artifacts (rebuilt on demand)
+preview.html
+_preview_patch.scad
+
 # Logs
 *.log
