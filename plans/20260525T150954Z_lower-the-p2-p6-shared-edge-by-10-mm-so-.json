@@ -1,0 +1,24 @@
+{
+  "summary": "Lower the P2/P6 shared edge by 10 mm so piece 6 captures the glyph's connecting neck and prints as one solid piece.",
+  "scad_changes": [
+    {
+      "description": "Lower P2's top edge (shared with P6) by 10 mm: (108,58)->(108,48), (155,70)->(155,60).",
+      "search": "    /* 2 top-ctr-R    */ [[ 95,  0],[158,  0],[155, 70],[108, 58]],",
+      "replace": "    /* 2 top-ctr-R    */ [[ 95,  0],[158,  0],[155, 60],[108, 48]],"
+    },
+    {
+      "description": "Lower P6's bottom edge (shared with P2) by 10 mm to match.",
+      "search": "    /* 6 mid-ctr-R    */ [[108, 58],[155, 70],[148,135],[ 92,122]],",
+      "replace": "    /* 6 mid-ctr-R    */ [[108, 48],[155, 60],[148,135],[ 92,122]],"
+    }
+  ],
+  "pieces_to_rerender": [
+    2,
+    6
+  ],
+  "html_changes": [],
+  "upload_paths": [
+    "stl/piece_2.stl",
+    "stl/piece_6.stl"
+  ]
+}
