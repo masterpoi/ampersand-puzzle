@@ -34,6 +34,8 @@ If a category has no changes, it should be an empty list / null.
 
 import json
 import sys
+import threading
+import time
 from pathlib import Path
 
 # Allow running from repo root or agents/ subdirectory
@@ -99,6 +101,34 @@ OUTPUT_PLAN_TOOL = {
     },
 }
 
+
+
+def _start_spinner(label: str) -> "tuple[threading.Event, threading.Thread]":
+    """Spin a progress indicator to stderr while the model is thinking."""
+    stop_ev  = threading.Event()
+    start_at = time.time()
+
+    def _spin() -> None:
+        frames = ("|", "/", "-", "\\")
+        i = 0
+        while not stop_ev.is_set():
+            elapsed    = time.time() - start_at
+            m, s       = divmod(int(elapsed), 60)
+            t_str      = f"{m}:{s:02d}" if m else f"{s}s"
+            print(f"\r  {label} {frames[i % 4]}  {t_str} ", end="", flush=True, file=sys.stderr)
+            i += 1
+            stop_ev.wait(0.12)
+        # Erase the spinner line so the next real output lands cleanly
+        print(f"\r{' ' * 64}\r", end="", flush=True, file=sys.stderr)
+
+    th = threading.Thread(target=_spin, daemon=True)
+    th.start()
+    return stop_ev, th
+
+
+def _stop_spinner(stop_ev: "threading.Event", th: "threading.Thread") -> None:
+    stop_ev.set()
+    th.join(timeout=1.0)
 
 
 def run(change_request: str, verbose: bool = False) -> dict:
@@ -178,23 +208,37 @@ Rules for `upload_paths`: every rebuilt stl/piece_N.stl; add index.html if HTML 
     MAX_NUDGES = 4   # allow several attempts before giving up
 
     for _turn in range(MAX_NUDGES + 1):
+        # Progress indicator — shown when not in verbose mode (verbose prints
+        # its own per-turn stats which would interleave with the spinner).
+        stop_ev = spin_th = None
+        if not verbose:
+            if _turn == 0:
+                spin_label = "Planning"
+            else:
+                spin_label = f"Re-planning (nudge {nudges}/{MAX_NUDGES})"
+            stop_ev, spin_th = _start_spinner(spin_label)
+
         # stream=True required by SDK when max_tokens is high enough to risk
         # exceeding the 10-minute non-streaming timeout.
-        with client.messages.stream(
-            model=CLAUDE_MODEL,
-            max_tokens=32000,
-            thinking={"type": "adaptive"},
-            system=[
-                {
-                    "type": "text",
-                    "text": system_prompt,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ],
-            tools=tools,
-            messages=messages,
-        ) as stream:
-            response = stream.get_final_message()
+        try:
+            with client.messages.stream(
+                model=CLAUDE_MODEL,
+                max_tokens=32000,
+                thinking={"type": "adaptive"},
+                system=[
+                    {
+                        "type": "text",
+                        "text": system_prompt,
+                        "cache_control": {"type": "ephemeral"},
+                    }
+                ],
+                tools=tools,
+                messages=messages,
+            ) as stream:
+                response = stream.get_final_message()
+        finally:
+            if stop_ev is not None:
+                _stop_spinner(stop_ev, spin_th)
 
         if verbose:
             u = response.usage

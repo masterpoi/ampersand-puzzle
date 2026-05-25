@@ -99,6 +99,21 @@ def _run_upload_all(verbose: bool) -> None:
     print(f"[uploader] {len(result['ok'])} uploaded, {len(result['errors'])} errors.")
 
 
+def _run_planner(request_text: str, verbose: bool) -> dict:
+    """Invoke the planner and print a summary of the resulting plan."""
+    from agents.planner import run as plan_run
+    t0   = time.time()
+    plan = plan_run(request_text, verbose=verbose)
+    dt   = time.time() - t0
+    print(f"\n[planner] Completed in {dt:.1f}s")
+    print(f"  Summary         : {plan.get('summary', '(none)')}")
+    print(f"  SCAD changes    : {len(plan.get('scad_changes', []))}")
+    print(f"  Pieces to render: {plan.get('pieces_to_rerender', [])}")
+    print(f"  HTML changes    : {len(plan.get('html_changes', []))}")
+    print(f"  Upload paths    : {plan.get('upload_paths', [])}")
+    return plan
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Ampersand puzzle change orchestrator.",
@@ -142,25 +157,17 @@ def main() -> None:
         parser.error("Provide a change request, 'history', 'bom', or --plan FILE.")
 
     # ── Stage 1: Planner ───────────────────────────────────────────────────────
+    can_replan   = False
+    full_request = None
+
     if args.plan:
         plan = json.loads(Path(args.plan).read_text(encoding="utf-8"))
         print(f"[orchestrator] Loaded plan from {args.plan}")
     else:
-        request_text = sys.stdin.read().strip() if args.request == "-" else args.request
-
+        full_request = sys.stdin.read().strip() if args.request == "-" else args.request
+        can_replan   = True
         _step("Stage 1 — Planner: converting request to plan")
-        from agents.planner import run as plan_run
-
-        t0   = time.time()
-        plan = plan_run(request_text, verbose=args.verbose)
-        dt   = time.time() - t0
-
-        print(f"\n[planner] Completed in {dt:.1f}s")
-        print(f"  Summary         : {plan.get('summary', '(none)')}")
-        print(f"  SCAD changes    : {len(plan.get('scad_changes', []))}")
-        print(f"  Pieces to render: {plan.get('pieces_to_rerender', [])}")
-        print(f"  HTML changes    : {len(plan.get('html_changes', []))}")
-        print(f"  Upload paths    : {plan.get('upload_paths', [])}")
+        plan = _run_planner(full_request, args.verbose)
 
     # Optionally save to an explicit user path (plans/ audit written after confirmation)
     if args.save_plan:
@@ -176,37 +183,62 @@ def main() -> None:
     # auto-proceed when --yes or stdin is not a TTY (piped/scripted)
     confirmed = args.yes or not sys.stdin.isatty()
 
-    # ── Stage 1c: Previs ───────────────────────────────────────────────────────
-    if not args.skip_previs and plan.get("pieces_to_rerender"):
-        _step("Stage 1c — Previs: before/after preview")
-        from agents.previewer import run as previs_run
+    # ── Stage 1c: Previs + confirmation loop ───────────────────────────────────
+    # The loop lets the user optionally type a correction that triggers a
+    # re-plan.  Entering 'y' or 'yes' proceeds, 'n'/empty aborts, anything
+    # else is treated as a correction appended to the original request.
+    from agents.previewer import run as previs_run, show_diff
 
-        previs_run(plan, open_browser=True, verbose=args.verbose)
+    while True:
+        has_geometry = bool(plan.get("pieces_to_rerender"))
+        has_changes  = bool(
+            plan.get("scad_changes") or plan.get("html_changes") or has_geometry
+        )
+
+        if not args.skip_previs:
+            if has_geometry:
+                _step("Stage 1c — Previs: before/after preview")
+                previs_run(plan, open_browser=True, verbose=args.verbose)
+            elif has_changes:
+                show_diff(plan)
+
+        # When --skip-previs or nothing to confirm, proceed immediately
+        if args.skip_previs or not has_changes:
+            break
 
         if confirmed:
             print("[orchestrator] --yes / non-interactive: proceeding automatically.")
-        else:
-            try:
-                answer = input("\n  Proceed with changes? [y/N] ").strip().lower()
-            except (KeyboardInterrupt, EOFError):
-                answer = ""
-            if answer not in ("y", "yes"):
-                _cleanup_previs()
-                print("[orchestrator] Aborted.")
-                return
+            break
 
-    elif not args.skip_previs:
-        # No geometry changes — still show the plan diff and ask to confirm
-        from agents.previewer import show_diff
-        show_diff(plan)
-        if not confirmed and (plan.get("scad_changes") or plan.get("html_changes")):
-            try:
-                answer = input("\n  Proceed with changes? [y/N] ").strip().lower()
-            except (KeyboardInterrupt, EOFError):
-                answer = ""
-            if answer not in ("y", "yes"):
-                print("[orchestrator] Aborted.")
-                return
+        # Interactive prompt — accepts y, n, or a free-text correction
+        try:
+            answer = input(
+                "\n  [y] proceed  [n] abort  "
+                "[or type a correction to re-plan]:\n  > "
+            ).strip()
+        except (KeyboardInterrupt, EOFError):
+            answer = ""
+
+        low = answer.lower()
+        if low in ("y", "yes"):
+            break
+        elif low in ("", "n", "no"):
+            _cleanup_previs()
+            print("[orchestrator] Aborted.")
+            return
+        else:
+            # Free-text correction — re-plan with the additional context
+            if not can_replan:
+                print(
+                    "[orchestrator] Cannot re-plan: was loaded from --plan FILE. "
+                    "Enter y to proceed or n to abort."
+                )
+                continue
+            _cleanup_previs()
+            full_request += f"\n\nRevision: {answer}"
+            _step("Stage 1 (revised) — Planner: re-planning with correction")
+            plan = _run_planner(full_request, args.verbose)
+            # Loop back to show the updated previs
 
     # ── Stage 1b: Save plan to audit trail (only after confirmation) ──────────
     if not args.skip_commit:
