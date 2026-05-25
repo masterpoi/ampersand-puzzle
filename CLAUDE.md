@@ -57,14 +57,15 @@ D:\2026\dev\o&o\
 
 ### 3.1 Dimensions
 
-| Constant    | Value  | Meaning                                      |
-|-------------|--------|----------------------------------------------|
-| `PIECE_H`   | 12 mm  | Total piece thickness (= M3×12 screw length) |
-| `TAB_H`     | 4 mm   | Tab zone height (lower z = 0…4)              |
-| `TAB_REACH` | 15 mm  | How far each tab protrudes into neighbour     |
-| `TAB_GAP`   | 0.15 mm| Clearance added to recess pocket on all sides |
-| `SCREW_D`   | 3.2 mm | M3 shaft clearance bore                      |
-| `INSERT_D`  | 4.6 mm | Heat-set insert outer diameter               |
+| Constant       | Value   | Meaning                                      |
+|----------------|---------|----------------------------------------------|
+| `PIECE_H`      | 12 mm   | Total piece thickness (= M3×12 screw length) |
+| `TAB_H`        | 5 mm    | Tab zone height (lower z = 0…5)              |
+| `TAB_REACH`    | 15 mm   | How far each tab protrudes into neighbour     |
+| `TAB_GAP`      | 0.15 mm | Clearance added to recess pocket on all sides |
+| `SCREW_D`      | 3.2 mm  | M3 shaft clearance bore                      |
+| `INSERT_D`     | 4.6 mm  | Heat-set insert outer diameter               |
+| `INSERT_DEPTH` | 5 mm    | Insert pocket depth (= TAB_H)                |
 
 ### 3.2 RENDER_MODE values
 
@@ -304,6 +305,8 @@ python orchestrator.py "describe the change you want in plain English"
 
 ### Sub-commands:
 ```powershell
+python orchestrator.py setup      # auto-configure AWS CLI profile from scw (run once per machine)
+python orchestrator.py upload     # full re-sync: upload all STLs + index.html to Scaleway
 python orchestrator.py history    # show recent git-tagged changes
 python orchestrator.py bom        # generate BOM (opens bom.html in browser)
 ```
@@ -423,7 +426,7 @@ New agents must too.
 | Component | Spec |
 |-----------|------|
 | Screws    | 16 × M3 × 12 mm DIN 7991 (countersunk socket head) |
-| Inserts   | 16 × M3 brass heat-set inserts, OD 4.6 mm, depth 4 mm |
+| Inserts   | 16 × M3 brass heat-set inserts, OD 4.6 mm, depth 5 mm |
 | Material  | PLA (or PETG), single colour recommended |
 | Size      | ~200 × 200 × 12 mm assembled |
 | Font      | Liberation Serif Bold (fallbacks: DejaVu Serif, FreeSerif, Georgia) |
@@ -493,12 +496,9 @@ pip install -r requirements.txt
 # 2. Set the Anthropic API key
 $env:ANTHROPIC_API_KEY = "sk-ant-..."
 
-# 3. Configure AWS CLI for Scaleway
-aws configure --profile scaleway
-# Access Key ID:     <Scaleway access key>
-# Secret Access Key: <Scaleway secret key>
-# Default region:    fr-par
-# Output format:     json
+# 3. Configure AWS CLI for Scaleway (zero-touch — reads from scw CLI)
+python orchestrator.py setup
+# Requires: scw CLI installed and logged in (https://www.scaleway.com/en/cli/)
 
 # 4. Ensure OpenSCAD is installed at:
 #    C:\Program Files\OpenSCAD\openscad.exe
@@ -506,6 +506,7 @@ aws configure --profile scaleway
 # 5. Start the preview server
 python -m http.server 3456 --directory "D:\2026\dev\o&o"
 # Then open: http://localhost:3456
+# (The previewer auto-starts this server when needed)
 
 # 6. Regenerate STLs if stl/ is empty
 python agents/stl_generator.py
